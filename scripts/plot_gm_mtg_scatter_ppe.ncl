@@ -3,15 +3,17 @@ ppe_dir     = "/home/bridge/wb19586/spinup_validation/data/fields"
 plot_dir    = "/home/bridge/wb19586/analysis/ppe_deepmip/plots"
 grid_ref    = "/home/bridge/wb19586/analysis/ppe_deepmip/tmp/grids/HadCM3BL_M2.1aN-tos.nc"
 grid_ref_short    = "HadCM3BL"
+;grid_ref    = "r360x180"
+;grid_ref_short    = "r360x180"
 
-models_deepmip    = (/"HadCM3BL_M2.1aN","HadCM3B_M2.1aN","GFDL_CM2.1","CESM1.2_CAM5","COSMOS-landveg_r2413"/)
-versions_deepmip  = (/"v1.0","v1.0","v1.0","v1.0","v1.0"/)
+models_deepmip    = (/"HadCM3BL_M2.1aN","HadCM3B_M2.1aN","GFDL_CM2.1","CESM1.2_CAM5","COSMOS-landveg_r2413","MIROC4m"/)
+versions_deepmip  = (/"v1.0","v1.0","v1.0","v1.0","v1.0","v1.0"/)
 exps_deepmip      = (/"{pi_control,piControl}","1x","2x","3x","4x","6x","9x"/)
 vars_deepmip      = (/"tas","tos"/)
 
 ppe_dir           = "/export/silurian/array-01/wb19586/symlinks/spinup_validation_data"
-models_ppe        = (/"f"/)
-exps_ppe          = (/"xott","xoud","","xoov","","xouh",""/)
+models_ppe        = (/"a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w"/)
+exps_ppe          = (/"xott","xoud","abc","xoov","abc","xouh","abc"/)
 varnames_ppe      = (/"pd","pg"/)
 vars_ppe          = (/"temp_mm_1_5m","temp_ym_dpth"/)
 
@@ -59,8 +61,10 @@ vars_ppe          = (/"temp_mm_1_5m","temp_ym_dpth"/)
                 data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
                 dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
                 dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-                
-                means_deepmip(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high)
+
+                means_deepmip(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
+;                means_deepmip(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
+
                 delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
               end if
           delete([/data,data_ym_zm/])         
@@ -74,6 +78,7 @@ means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
 ;--- load HadCM3 PPE runs and calculate means
   means_ppe     = new((/dimsizes(models_ppe),dimsizes(exps_ppe),dimsizes(vars_ppe)+1/),"float")
   do nn=0,dimsizes(models_ppe)-1
+    print("processing "+models_ppe(nn))
     do ii=0,dimsizes(exps_ppe)-1
       do vv=0,dimsizes(vars_ppe)-1
         ;--- check whether file for model+exp combination is available
@@ -82,7 +87,11 @@ means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
           fi          = addfile(f,"r")
           data        = fi->$vars_ppe(vv)$(:,0,:,0)
           dims_data   = dimsizes(data)
-          data_ym_zm   = dim_avg_n_Wrap(data((dims_data(0)-30):(dims_data(0)-1),:),0) ; calculate annual+zonal mean and remove vertical dimension if present
+          if (dims_data(0) .lt. 300) then ; skip simulations with less than 300 years
+            delete([/data/]) 
+            continue
+          end if
+          data_ym_zm   = dim_avg_n_Wrap(data((dims_data(0)-100):(dims_data(0)-1),:),0) ; calculate annual+zonal mean and remove vertical dimension if present
           data_ym_zm!0 = "lat"
           lat      := tofloat(data_ym_zm&lat)
           ;--- calculate means (area weights from sine from latitude edges)
@@ -109,7 +118,9 @@ means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
                 dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
                 dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
                 
-                means_ppe(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high)
+                means_ppe(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
+ ;               means_ppe(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
+
                 delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
               end if
           delete([/data,data_ym_zm/])         
@@ -120,7 +131,6 @@ means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
 
 means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
 
-print(means_ppe)
 ;--- scatter plots
   wks = gsn_open_wks("pdf",plot_dir+"/gm_mtg_scatter_ppe")
 
@@ -138,14 +148,21 @@ print(means_ppe)
   resP                = True
   resP@gsnMaximize    = True
   resP@gsnPanelYWhiteSpacePercent = 5.
-  
+  resP@gsnPanelXWhiteSpacePercent = 5.
+
   plres                 = True
-  plres@gsMarkerSizeF   = 0.014
+  plres@gsMarkerSizeF   = 0.012
   plres@gsMarkerThicknessF = 2.
   
+  ploutres                    = True
+  ploutres@gsMarkerSizeF      = 0.007
+  ploutres@gsMarkerThicknessF = 1.
+  ploutres@gsMarkerIndex      = 4
+
   pl_colors             = (/"gray","black","purple","blue","cyan","green","orange"/)
-  pl_styles_deepmip     = (/4,16,5,6,9/)
-  pl_styles_ppe         = (/12/)
+  pl_styles_deepmip     = (/4,16,5,6,9,7/)
+  pl_styles_ppe_f       = (/12/)
+  pl_styles_ppe         = (/16/)
 
   pgres                 = True
   pgres@gsFillColor     = "transparent"      ;-- fill color
@@ -154,8 +171,11 @@ print(means_ppe)
   pgres@gsEdgeThicknessF = 2.0
 
 
-  plot          = new(2,graphic)
+  plot          = new(4,graphic)
   poly          = new(2000,graphic)
+  poly2         = new(2000,graphic)
+  poly2_out     = new(2000,graphic)
+
   count         = 0
   
   co2_levels    = (/1,1,2,3,4,6,9/)
@@ -177,6 +197,8 @@ print(means_ppe)
     plot(0)       = gsn_csm_blank_plot(wks,res_blank)
     
     do nn=0,dimsizes(models_deepmip)-1
+      plres@gsMarkerSizeF   = 0.012
+      plres@gsMarkerThicknessF = 2.
       plres@gsMarkerIndex = pl_styles_deepmip(nn)
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
@@ -184,16 +206,44 @@ print(means_ppe)
         count       = count+1
       end do
     end do   
-    do nn=0,dimsizes(models_ppe)-1
-      plres@gsMarkerIndex = pl_styles_ppe(nn)
+    
+    proxy_area_a  = gsn_add_polygon(wks,plot(0),log10((/3.3,9,9,3.3,3.3/)),(/26,26,32,32,26/),pgres)
+
+    plot(2)       = gsn_csm_blank_plot(wks,res_blank)
+
+    plres@gsMarkerOpacityF = 0.3
+    do nn=0,dimsizes(models_deepmip)-1
+      plres@gsMarkerSizeF   = 0.012
+      plres@gsMarkerThicknessF = 2.
+      plres@gsMarkerIndex = pl_styles_deepmip(nn)
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
-        poly(count) = gsn_add_polymarker(wks,plot(0),log10(co2_levels(ll)),means_ppe(nn,ll,0),plres)
+        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_deepmip(nn,ll,0),plres)
+        count       = count+1
+      end do
+    end do   
+    plres@gsMarkerOpacityF = 1.
+    do nn=0,dimsizes(models_ppe)-1
+      if (models_ppe(nn) .eq. "f") then
+        plres@gsMarkerIndex = pl_styles_ppe_f
+        plres@gsMarkerSizeF   = 0.012
+        plres@gsMarkerThicknessF = 2.
+      else
+        plres@gsMarkerSizeF   = 0.007
+        plres@gsMarkerThicknessF = 1.
+        plres@gsMarkerIndex = pl_styles_ppe
+      end if
+      do ll=0,dimsizes(co2_levels)-1
+        plres@gsMarkerColor = pl_colors(ll)
+        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_ppe(nn,ll,0),plres)
+        if (models_ppe(nn) .ne. "f") then
+          poly2_out(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_ppe(nn,ll,0),ploutres)
+        end if
         count       = count+1
       end do
     end do
     
-    proxy_area_a  = gsn_add_polygon(wks,plot(0),log10((/3.3,9,9,3.3,3.3/)),(/26,26,32,32,26/),pgres)
+    proxy_area_a2  = gsn_add_polygon(wks,plot(2),log10((/3.3,9,9,3.3,3.3/)),(/26,26,32,32,26/),pgres)
 
     ;--- SST vs. SST MTG
     res_blank@trXMinF         = 15
@@ -210,6 +260,8 @@ print(means_ppe)
     plot(1)       = gsn_csm_blank_plot(wks,res_blank)
     
     do nn=0,dimsizes(models_deepmip)-1
+      plres@gsMarkerSizeF   = 0.012
+      plres@gsMarkerThicknessF = 2.
       plres@gsMarkerIndex = pl_styles_deepmip(nn)
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
@@ -217,47 +269,160 @@ print(means_ppe)
         count       = count+1
       end do
     end do
-    do nn=0,dimsizes(models_ppe)-1
-      plres@gsMarkerIndex = pl_styles_ppe(nn)
+
+    proxy_area_b  = gsn_add_polygon(wks,plot(1),(/26,32,32,26,26/),(/20,20,22,22,20/),pgres)
+
+    plot(3)       = gsn_csm_blank_plot(wks,res_blank)
+    
+    plres@gsMarkerOpacityF = 0.3
+    do nn=0,dimsizes(models_deepmip)-1
+      plres@gsMarkerSizeF   = 0.012
+      plres@gsMarkerThicknessF = 2.
+      plres@gsMarkerIndex = pl_styles_deepmip(nn)
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
-        poly(count) = gsn_add_polymarker(wks,plot(1),means_ppe(nn,ll,1),means_ppe(nn,ll,2),plres)
+        poly2(count) = gsn_add_polymarker(wks,plot(3),means_deepmip(nn,ll,1),means_deepmip(nn,ll,2),plres)
+        count       = count+1
+      end do
+    end do
+    plres@gsMarkerOpacityF = 1.0
+    do nn=0,dimsizes(models_ppe)-1
+      if (models_ppe(nn) .eq. "f") then
+        plres@gsMarkerIndex = pl_styles_ppe_f
+        plres@gsMarkerSizeF   = 0.012
+        plres@gsMarkerThicknessF = 2.
+      else
+        plres@gsMarkerSizeF   = 0.007
+        plres@gsMarkerThicknessF = 1.
+        plres@gsMarkerIndex = pl_styles_ppe
+      end if
+      do ll=0,dimsizes(co2_levels)-1
+        plres@gsMarkerColor = pl_colors(ll)
+        poly2(count) = gsn_add_polymarker(wks,plot(3),means_ppe(nn,ll,1),means_ppe(nn,ll,2),plres)
+        if (models_ppe(nn) .ne. "f") then
+          poly2_out(count) = gsn_add_polymarker(wks,plot(3),means_ppe(nn,ll,1),means_ppe(nn,ll,2),ploutres)
+        end if
         count       = count+1
       end do
     end do
 
-    proxy_area_b  = gsn_add_polygon(wks,plot(1),(/26,32,32,26,26/),(/20,20,22,22,20/),pgres)
+    proxy_area_b2  = gsn_add_polygon(wks,plot(3),(/26,32,32,26,26/),(/20,20,22,22,20/),pgres)
 
-   names = models_deepmip
-
+   names_legend = array_append_record(models_deepmip,"HadCM3B_M2.1aN_PPE_f",0)
+   pl_styles_legend = array_append_record(pl_styles_deepmip,pl_styles_ppe_f,0)
+   
    legend = create "Legend" legendClass wks 
-   "vpXF" : 0.59
-   "vpYF" : .756
+   "vpXF" : 0.291
+   "vpYF" : .69
    "lgAutoManage" : False
    "vpWidthF" : 0.08
-   "vpHeightF" : 0.15
+   "vpHeightF" : 0.12
    "lgLineThicknessF" : 8.0
    "lgLineDashSegLenF" : 0.08
    "lgPerimOn" : True
    "lgLabelJust" : "CenterLeft"
-   "lgItemCount" : dimsizes(names)
-   "lgItemOrder" : ispan(dimsizes(names)-1,0,1)
-   "lgLabelStrings" : names
+   "lgItemCount" : dimsizes(names_legend)
+   "lgItemOrder" : ispan(dimsizes(names_legend)-1,0,1)
+   "lgLabelStrings" : names_legend
    "lgItemType" : "Markers"
    "lgLabelsOn" : True 
    "lgLineLabelsOn" : False 
-   "lgLabelFontHeightF"  : 0.01
+   "lgLabelFontHeightF"  : 0.007
    "lgLabelPosition" : "Right"
    "lgLabelOffsetF" : 0.1
    "lgMonoDashIndex" : False
-   "lgMarkerIndexes" : pl_styles_deepmip
+   "lgMarkerIndexes" : pl_styles_legend
    "lgMonoMarkerColor" : True ; Only one dash pattern - solid
    "lgMarkerColor" : "black"
-   "lgMarkerSizeF" : 0.014
+   "lgMarkerSizeF" : 0.01
    "lgMarkerThicknessF" : 2
    end create 
 
    draw(legend)
 
-  gsn_panel(wks,plot,(/2,1/),resP)
+  gsn_panel(wks,plot,(/2,2/),resP)
+
+  wks = gsn_open_wks("pdf",plot_dir+"/PI_scatter_ppe")
+
+  plot          := new(1,graphic)
+  poly          := new(2000,graphic)
+  poly2         := new(2000,graphic)
+  poly2_out     := new(2000,graphic)
+
+  count         = 0
+  
+  res_blank@trXMinF         = 16
+  res_blank@trXMaxF         = 21
+  res_blank@trYMinF         = 12
+  res_blank@trYMaxF         = 17
+  res_blank@tmXBMode        = "Automatic"
+  res_blank@tiXAxisString  = "global mean SST"
+  res_blank@tiYAxisString  = "global mean surface temperature"
+  res_blank@gsnLeftString  = "DeepMIP pre-industrial simulations"
+  plot(0)       = gsn_csm_blank_plot(wks,res_blank)
+
+
+    plres@gsMarkerOpacityF = 1.0
+    do nn=0,dimsizes(models_deepmip)-1
+      plres@gsMarkerSizeF   = 0.018
+      plres@gsMarkerThicknessF = 3.
+      plres@gsMarkerIndex = pl_styles_deepmip(nn)
+      do ll=0,0
+        plres@gsMarkerColor = pl_colors(ll)
+        poly2(count) = gsn_add_polymarker(wks,plot(0),means_deepmip(nn,ll,1),means_deepmip(nn,ll,0),plres)
+        count       = count+1
+      end do
+    end do   
+    plres@gsMarkerOpacityF = 1.
+    ploutres@gsMarkerSizeF      = 0.013
     
+    do nn=0,dimsizes(models_ppe)-1
+      if (models_ppe(nn) .eq. "f") then
+        plres@gsMarkerIndex = pl_styles_ppe_f
+        plres@gsMarkerSizeF   = 0.018
+        plres@gsMarkerThicknessF = 2.
+      else
+        plres@gsMarkerSizeF   = 0.012
+        plres@gsMarkerThicknessF = 2.
+        plres@gsMarkerIndex = pl_styles_ppe
+      end if
+      do ll=0,0
+        plres@gsMarkerColor = pl_colors(ll)
+        poly2(count) = gsn_add_polymarker(wks,plot(0),means_ppe(nn,ll,1),means_ppe(nn,ll,0),plres)
+        if (models_ppe(nn) .ne. "f") then
+          poly2_out(count) = gsn_add_polymarker(wks,plot(0),means_ppe(nn,ll,1),means_ppe(nn,ll,0),ploutres)
+        end if
+        count       = count+1
+      end do
+    end do
+
+   legend2 = create "Legend" legendClass wks 
+   "vpXF" : 0.63
+   "vpYF" : .47
+   "lgAutoManage" : False
+   "vpWidthF" : 0.12
+   "vpHeightF" : 0.18
+   "lgLineThicknessF" : 8.0
+   "lgLineDashSegLenF" : 0.08
+   "lgPerimOn" : True
+   "lgLabelJust" : "CenterLeft"
+   "lgItemCount" : dimsizes(names_legend)
+   "lgItemOrder" : ispan(dimsizes(names_legend)-1,0,1)
+   "lgLabelStrings" : names_legend
+   "lgItemType" : "Markers"
+   "lgLabelsOn" : True 
+   "lgLineLabelsOn" : False 
+   "lgLabelFontHeightF"  : 0.012
+   "lgLabelPosition" : "Right"
+   "lgLabelOffsetF" : 0.1
+   "lgMonoDashIndex" : False
+   "lgMarkerIndexes" : pl_styles_legend
+   "lgMonoMarkerColor" : True ; Only one dash pattern - solid
+   "lgMarkerColor" : "black"
+   "lgMarkerSizeF" : 0.016
+   "lgMarkerThicknessF" : 2
+   end create 
+
+   draw(legend2)
+    
+    gsn_panel(wks,plot,(/1,1/),resP)
