@@ -11,125 +11,149 @@ versions_deepmip  = (/"v1.0","v1.0","v1.0","v1.0","v1.0","v1.0"/)
 exps_deepmip      = (/"{pi_control,piControl}","1x","2x","3x","4x","6x","9x"/)
 vars_deepmip      = (/"tas","tos"/)
 
-ppe_dir           = "/export/silurian/array-01/wb19586/symlinks/spinup_validation_data"
 models_ppe        = (/"a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w"/)
 exps_ppe          = (/"xott","xoud","abc","xoov","abc","xouh","abc"/)
 varnames_ppe      = (/"pd","pg"/)
 vars_ppe          = (/"temp_mm_1_5m","temp_ym_dpth"/)
 
+calc_deepmip      = 0
+calc_ppe          = 0
+
 ;--- load DeepMIP TAS+TOS and calculate means
-  means_deepmip     = new((/dimsizes(models_deepmip),dimsizes(exps_deepmip),dimsizes(vars_deepmip)+1/),"float")
-  do nn=0,dimsizes(models_deepmip)-1
-    do ii=0,dimsizes(exps_deepmip)-1
-      do vv=0,dimsizes(vars_deepmip)-1
-        ;--- check whether file for model+exp combination is available
-        f := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*"+vars_deepmip(vv)+"-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
-        if (.not. all(ismissing(f))) then ; file(s) found
-          if (ii .eq. 0) then
-            remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_piControl_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
-          else
-            remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_"+exps_deepmip(ii)+"_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
-          end if
-          if (fileexists(remap_file) .eq. False) then
-            remap       = systemfunc("cdo -remapnn,"+grid_ref+" "+f(0)+" "+remap_file)
-          end if
-          fi          = addfile(remap_file,"r")
-          data        = fi->$vars_deepmip(vv)$
-          data_ym_zm   = dim_avg_n_Wrap(rm_single_dims(dim_avg_n_Wrap(data,0)),1) ; calculate annual+zonal mean and remove vertical dimension if present
-          data_ym_zm!0 = "lat"
-          lat      := tofloat(data_ym_zm&lat)
-          ;--- calculate means (area weights from sine from latitude edges)
-            pi                            = get_pi("float" )
-            dlat                         := new(dimsizes(lat),"float") ; weights
-            lats_edge                    := new(dimsizes(lat)+1,"float") ; weights
-            if (lat(0) .eq. max(lat)) then
-              lats_edge(0)                  = pi/2.0 
-              lats_edge(dimsizes(lat))      = -1.*pi/2.0
-            else if (lat(0) .eq. min(lat)) then
-              lats_edge(0)                  = -1.*pi/2.0 
-              lats_edge(dimsizes(lat))      = pi/2.0
+  if (calc_deepmip .eq. 1) then
+    means_deepmip     = new((/dimsizes(models_deepmip),dimsizes(exps_deepmip),dimsizes(vars_deepmip)+1/),"float")
+    do nn=0,dimsizes(models_deepmip)-1
+      do ii=0,dimsizes(exps_deepmip)-1
+        do vv=0,dimsizes(vars_deepmip)-1
+          ;--- check whether file for model+exp combination is available
+          f := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*"+vars_deepmip(vv)+"-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
+          if (.not. all(ismissing(f))) then ; file(s) found
+            if (ii .eq. 0) then
+              remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_piControl_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
+            else
+              remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_"+exps_deepmip(ii)+"_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
             end if
-            end if             
-            lats_edge(1:dimsizes(lat)-1)  = 2.*pi*(lat(0:dimsizes(lat)-2) + lat(1:dimsizes(lat)-1))/(2.0*360.)
-            dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
-            dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
-            ;--- global means 
-              means_deepmip(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
-            ;--- SST gradient
-              if (vars_deepmip(vv) .eq. "tos") then
-                data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
-                data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
-                dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
-                dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-
-                means_deepmip(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
-;                means_deepmip(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
-
-                delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
+            if (fileexists(remap_file) .eq. False) then
+              remap       = systemfunc("cdo -remapnn,"+grid_ref+" "+f(0)+" "+remap_file)
+            end if
+            fi          = addfile(remap_file,"r")
+            data        = fi->$vars_deepmip(vv)$
+            data_ym_zm   = dim_avg_n_Wrap(rm_single_dims(dim_avg_n_Wrap(data,0)),1) ; calculate annual+zonal mean and remove vertical dimension if present
+            data_ym_zm!0 = "lat"
+            lat      := tofloat(data_ym_zm&lat)
+            ;--- calculate means (area weights from sine from latitude edges)
+              pi                            = get_pi("float" )
+              dlat                         := new(dimsizes(lat),"float") ; weights
+              lats_edge                    := new(dimsizes(lat)+1,"float") ; weights
+              if (lat(0) .eq. max(lat)) then
+                lats_edge(0)                  = pi/2.0 
+                lats_edge(dimsizes(lat))      = -1.*pi/2.0
+              else if (lat(0) .eq. min(lat)) then
+                lats_edge(0)                  = -1.*pi/2.0 
+                lats_edge(dimsizes(lat))      = pi/2.0
               end if
-          delete([/data,data_ym_zm/])         
-        end if
+              end if             
+              lats_edge(1:dimsizes(lat)-1)  = 2.*pi*(lat(0:dimsizes(lat)-2) + lat(1:dimsizes(lat)-1))/(2.0*360.)
+              dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
+              dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
+              ;--- global means 
+                means_deepmip(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
+              ;--- SST gradient
+                if (vars_deepmip(vv) .eq. "tos") then
+                  data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
+                  data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
+                  dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
+                  dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
+
+                  means_deepmip(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
+  ;                means_deepmip(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
+
+                  delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
+                end if
+            delete([/data,data_ym_zm/])         
+          end if
+        end do
       end do
     end do
-  end do
-
-means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
+    means_deepmip(:,:,0)  = means_deepmip(:,:,0) - 273.15
+    ;---Open a new NetCDF file to write to
+      fout_name = plot_dir+"/../tmp/DeepMIP_processed_means."+grid_ref_short+".nc"
+      system("rm -f " + fout_name)
+      fout = addfile(fout_name,"c")
+      means_deepmip@long_name = "processed DeepMIP metrics"
+      means_deepmip!0         = "model"
+      means_deepmip!1         = "experiment"
+      means_deepmip!2         = "variable"
+      fout->means_deepmip = means_deepmip
+  else
+    f             := addfile(plot_dir+"/../tmp/DeepMIP_processed_means."+grid_ref_short+".nc","r")
+    means_deepmip  = f->means_deepmip
+  end if
+  
 
 ;--- load HadCM3 PPE runs and calculate means
-  means_ppe     = new((/dimsizes(models_ppe),dimsizes(exps_ppe),dimsizes(vars_ppe)+1/),"float")
-  do nn=0,dimsizes(models_ppe)-1
-    print("processing "+models_ppe(nn))
-    do ii=0,dimsizes(exps_ppe)-1
-      do vv=0,dimsizes(vars_ppe)-1
-        ;--- check whether file for model+exp combination is available
-        f := systemfunc("ls -r "+ppe_dir+"/"+exps_ppe(ii)+models_ppe(nn)+"*"+varnames_ppe(vv)+"*.nc* 2> /dev/null")
-        if (.not. all(ismissing(f))) then ; file(s) found
-          fi          = addfile(f,"r")
-          data        = fi->$vars_ppe(vv)$(:,0,:,0)
-          dims_data   = dimsizes(data)
-          if (dims_data(0) .lt. 300) then ; skip simulations with less than 300 years
-            delete([/data/]) 
-            continue
-          end if
-          data_ym_zm   = dim_avg_n_Wrap(data((dims_data(0)-100):(dims_data(0)-1),:),0) ; calculate annual+zonal mean and remove vertical dimension if present
-          data_ym_zm!0 = "lat"
-          lat      := tofloat(data_ym_zm&lat)
-          ;--- calculate means (area weights from sine from latitude edges)
-            pi                            = get_pi("float" )
-            dlat                         := new(dimsizes(lat),"float") ; weights
-            lats_edge                    := new(dimsizes(lat)+1,"float") ; weights
-            if (lat(0) .eq. max(lat)) then
-              lats_edge(0)                  = pi/2.0 
-              lats_edge(dimsizes(lat))      = -1.*pi/2.0
-            else if (lat(0) .eq. min(lat)) then
-              lats_edge(0)                  = -1.*pi/2.0 
-              lats_edge(dimsizes(lat))      = pi/2.0
-            end if
-            end if             
-            lats_edge(1:dimsizes(lat)-1)  = 2.*pi*(lat(0:dimsizes(lat)-2) + lat(1:dimsizes(lat)-1))/(2.0*360.)
-            dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
-            dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
-            ;--- global means 
-              means_ppe(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
-            ;--- SST gradient
-              if (vars_ppe(vv) .eq. "temp_ym_dpth") then
-                data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
-                data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
-                dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
-                dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-                
-                means_ppe(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
- ;               means_ppe(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
-
-                delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
+  if (calc_ppe .eq. 1) then
+    means_ppe     = new((/dimsizes(models_ppe),dimsizes(exps_ppe),dimsizes(vars_ppe)+1/),"float")
+    do nn=0,dimsizes(models_ppe)-1
+      print("processing "+models_ppe(nn))
+      do ii=0,dimsizes(exps_ppe)-1
+        do vv=0,dimsizes(vars_ppe)-1
+          ;--- check whether file for model+exp combination is available
+          f := systemfunc("ls -r "+ppe_dir+"/"+exps_ppe(ii)+models_ppe(nn)+"*"+varnames_ppe(vv)+"*.mean.zm.nc* 2> /dev/null")
+          if (.not. all(ismissing(f))) then ; file(s) found
+            fi            = addfile(f,"r")
+            data_ym_zm    = fi->$vars_ppe(vv)$(0,0,:,0)
+            data_ym_zm!0  = "lat"
+            lat          := tofloat(data_ym_zm&lat)
+            ;--- calculate means (area weights from sine from latitude edges)
+              pi                            = get_pi("float" )
+              dlat                         := new(dimsizes(lat),"float") ; weights
+              lats_edge                    := new(dimsizes(lat)+1,"float") ; weights
+              if (lat(0) .eq. max(lat)) then
+                lats_edge(0)                  = pi/2.0 
+                lats_edge(dimsizes(lat))      = -1.*pi/2.0
+              else if (lat(0) .eq. min(lat)) then
+                lats_edge(0)                  = -1.*pi/2.0 
+                lats_edge(dimsizes(lat))      = pi/2.0
               end if
-          delete([/data,data_ym_zm/])         
-        end if
+              end if             
+              lats_edge(1:dimsizes(lat)-1)  = 2.*pi*(lat(0:dimsizes(lat)-2) + lat(1:dimsizes(lat)-1))/(2.0*360.)
+              dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
+              dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
+              ;--- global means 
+                means_ppe(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
+              ;--- SST gradient
+                if (vars_ppe(vv) .eq. "temp_ym_dpth") then
+                  data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
+                  data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
+                  dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
+                  dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
+                
+                  means_ppe(nn,ii,vv+1)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
+   ;               means_ppe(nn,ii,vv+1)     = avg(data_ym_zm_low) - avg(data_ym_zm_high) ; unweighted MTG
+
+                  delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])         
+                end if
+            delete([/data_ym_zm/])         
+          end if
+        end do
       end do
     end do
-  end do
+    means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
 
-means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
+    ;---Open a new NetCDF file to write to
+      fout_name = plot_dir+"/../tmp/PPE_processed_means.HadCM3BL.nc"
+      system("rm -f " + fout_name)
+      fout = addfile(fout_name,"c")
+      means_ppe@long_name = "processed HadCM3B PPE metrics"
+      means_ppe!0         = "model"
+      means_ppe!1         = "experiment"
+      means_ppe!2         = "variable"
+      fout->means_ppe     = means_ppe
+  else
+    f             := addfile(plot_dir+"/../tmp/PPE_processed_means.HadCM3BL.nc","r")
+    means_ppe      = f->means_ppe
+  end if
 
 ;--- scatter plots
   wks = gsn_open_wks("pdf",plot_dir+"/gm_mtg_scatter_ppe")
@@ -152,7 +176,6 @@ means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
 
   plres                 = True
   plres@gsMarkerSizeF   = 0.012
-  plres@gsMarkerThicknessF = 2.
   
   ploutres                    = True
   ploutres@gsMarkerSizeF      = 0.007
@@ -198,36 +221,39 @@ means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
     
     do nn=0,dimsizes(models_deepmip)-1
       plres@gsMarkerSizeF   = 0.012
-      plres@gsMarkerThicknessF = 2.
-      plres@gsMarkerIndex = pl_styles_deepmip(nn)
+      plres@gsMarkerThicknessF = 1.5
       do ll=0,dimsizes(co2_levels)-1
+        plres@gsMarkerIndex = pl_styles_deepmip(nn)
         plres@gsMarkerColor = pl_colors(ll)
-        poly(count) = gsn_add_polymarker(wks,plot(0),log10(co2_levels(ll)),means_deepmip(nn,ll,0),plres)
+        poly(count) = gsn_add_polymarker(wks,plot(0),log10(co2_levels(ll)-0.05*co2_levels(ll)),means_deepmip(nn,ll,0),plres)
+        count       = count+1
+        plres@gsMarkerIndex   = pl_styles_ppe_f
+        poly(count) = gsn_add_polymarker(wks,plot(0),log10(co2_levels(ll)+0.05*co2_levels(ll)),means_ppe(5,ll,0),plres)
         count       = count+1
       end do
     end do   
     
-    proxy_area_a  = gsn_add_polygon(wks,plot(0),log10((/3.3,9,9,3.3,3.3/)),(/26,26,32,32,26/),pgres)
+    proxy_area_a  = gsn_add_polygon(wks,plot(0),log10((/3.4,9,9,3.4,3.4/)),(/26,26,32,32,26/),pgres)
 
     plot(2)       = gsn_csm_blank_plot(wks,res_blank)
 
-    plres@gsMarkerOpacityF = 0.3
+    plres@gsMarkerOpacityF = 1.0
     do nn=0,dimsizes(models_deepmip)-1
       plres@gsMarkerSizeF   = 0.012
-      plres@gsMarkerThicknessF = 2.
+      plres@gsMarkerThicknessF = 1.5
       plres@gsMarkerIndex = pl_styles_deepmip(nn)
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
-        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_deepmip(nn,ll,0),plres)
+        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)-0.05*co2_levels(ll)),means_deepmip(nn,ll,0),plres)
         count       = count+1
       end do
     end do   
     plres@gsMarkerOpacityF = 1.
     do nn=0,dimsizes(models_ppe)-1
       if (models_ppe(nn) .eq. "f") then
-        plres@gsMarkerIndex = pl_styles_ppe_f
+        plres@gsMarkerIndex   = pl_styles_ppe_f
         plres@gsMarkerSizeF   = 0.012
-        plres@gsMarkerThicknessF = 2.
+        plres@gsMarkerThicknessF = 1.5
       else
         plres@gsMarkerSizeF   = 0.007
         plres@gsMarkerThicknessF = 1.
@@ -235,15 +261,15 @@ means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
       end if
       do ll=0,dimsizes(co2_levels)-1
         plres@gsMarkerColor = pl_colors(ll)
-        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_ppe(nn,ll,0),plres)
+        poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)+0.05*co2_levels(ll)),means_ppe(nn,ll,0),plres)
         if (models_ppe(nn) .ne. "f") then
-          poly2_out(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)),means_ppe(nn,ll,0),ploutres)
+          poly2_out(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)+0.05*co2_levels(ll)),means_ppe(nn,ll,0),ploutres)
         end if
         count       = count+1
       end do
     end do
     
-    proxy_area_a2  = gsn_add_polygon(wks,plot(2),log10((/3.3,9,9,3.3,3.3/)),(/26,26,32,32,26/),pgres)
+    proxy_area_a2  = gsn_add_polygon(wks,plot(2),log10((/3.4,9,9,3.4,3.4/)),(/26,26,32,32,26/),pgres)
 
     ;--- SST vs. SST MTG
     res_blank@trXMinF         = 15
@@ -261,12 +287,15 @@ means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
     
     do nn=0,dimsizes(models_deepmip)-1
       plres@gsMarkerSizeF   = 0.012
-      plres@gsMarkerThicknessF = 2.
-      plres@gsMarkerIndex = pl_styles_deepmip(nn)
+      plres@gsMarkerThicknessF = 1.5
       do ll=0,dimsizes(co2_levels)-1
+        plres@gsMarkerIndex = pl_styles_deepmip(nn)
         plres@gsMarkerColor = pl_colors(ll)
         poly(count) = gsn_add_polymarker(wks,plot(1),means_deepmip(nn,ll,1),means_deepmip(nn,ll,2),plres)
         count       = count+1
+        plres@gsMarkerIndex   = pl_styles_ppe_f
+        poly(count) = gsn_add_polymarker(wks,plot(1),means_ppe(5,ll,1),means_ppe(5,ll,2),plres)
+        count       = count+1        
       end do
     end do
 
@@ -420,7 +449,7 @@ means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
    "lgMonoMarkerColor" : True ; Only one dash pattern - solid
    "lgMarkerColor" : "black"
    "lgMarkerSizeF" : 0.016
-   "lgMarkerThicknessF" : 2
+   "lgMarkerThicknessF" : 1.5
    end create 
 
    draw(legend2)
