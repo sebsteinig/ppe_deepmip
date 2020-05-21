@@ -6,31 +6,33 @@ grid_ref_short    = "HadCM3BL"
 ;grid_ref    = "r360x180"
 ;grid_ref_short    = "r360x180"
 
-models_deepmip    = (/"HadCM3BL_M2.1aN","HadCM3B_M2.1aN","GFDL_CM2.1","CESM1.2_CAM5","COSMOS-landveg_r2413","MIROC4m"/)
-versions_deepmip  = (/"v1.0","v1.0","v1.0","v1.0","v1.0","v1.0"/)
-exps_deepmip      = (/"{pi_control,piControl}","1x","2x","3x","4x","6x","9x"/)
-vars_deepmip      = (/"tas","tos","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","pr"/)
+models_deepmip    = (/"HadCM3BL_M2.1aN","HadCM3B_M2.1aN","GFDL_CM2.1","CESM1.2_CAM5","COSMOS-landveg_r2413","MIROC4m","IPSLCM5A2","NorESM1_F"/)
+deepmip_short     = (/"HadCM3BL","HadCM3B","GFDL","CESM","COSMOS","MIROC4m","IPSLCM5A2","NorESM1"/)
+versions_deepmip  = (/"v1.0","v1.0","v1.0","v1.0","v1.0","v1.0","v1.0","v1.0"/)
+exps_deepmip      = (/"piControl","1x","1.5x","2x","3x","4x","6x","9x"/)
+vars_deepmip      = (/"tas","tos","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","pr","pr","psl","TOA_imbalance"/)
 
 models_ppe        = (/"a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w"/)
-exps_ppe          = (/"xott","xoud","abc","xoov","abc","xouh","abc"/)
-varnames_ppe      = (/"pd","pg","gradient","gradient","rmse","rmse","pd","TOA"/)
-vars_ppe          = (/"temp_mm_1_5m","temp_ym_dpth","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","precip_mm_srf","TOA_imbalance"/)
-vars_ppe_fields   = (/"temp_mm_1_5m","temp_ym_dpth","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","precip_mm_srf","TOA_imbalance"/)
+exps_ppe          = (/"xott","xoud","abc","abc","xoov","xoug","xouh","abc"/)
+varnames_ppe      = (/"pd","pg","gradient","gradient","rmse","rmse","pd","pd","pd","TOA"/)
+vars_ppe          = (/"temp_mm_1_5m","temp_ym_dpth","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","precip_mm_srf","precip_mm_srf","p_mm_msl","TOA_imbalance"/)
+vars_ppe_fields   = (/"temp_mm_1_5m","temp_ym_dpth","tsurf_gradient","sst_gradient","rmse_tsurf","rmse_sst","precip_mm_srf","precip_mm_srf","p_mm_msl","TOA_imbalance"/)
 
-vars_era5         = (/"t2m","sst","t2m","sst","t2m","sst","tp"/)
+vars_era5         = (/"t2m","sst","t2m","sst","t2m","sst","tp","tp","msl"/)
 
 calc_deepmip      = 0
 calc_ppe          = 0
 
 ;--- load ERA5 fields
   fi = addfile(plot_dir+"/../tmp/observations/ERA5_1980-1999.clim.HadCM3BL.nc","r")
-  fields_era5  =  new((/dimsizes(vars_era5),12,73,96/),"float")
-  means_era5   =  new((/dimsizes(vars_era5)/),"float")
+  fields_era5  =  new((/dimsizes(vars_era5)+1,12,73,96/),"float")
+  means_era5   =  new((/dimsizes(vars_era5)+1/),"float")
   do vv=0,dimsizes(vars_era5)-1
     fields_era5(vv,:,:,:) = short2flt(fi->$vars_era5(vv)$)
   end do
   fields_era5(0:5,:,:,:)  = fields_era5(0:5,:,:,:)-273.15   ; temperatures
-  fields_era5(6,:,:,:)    = fields_era5(6,:,:,:)*1000 ; total precipitation
+  fields_era5(6:7,:,:,:)  = fields_era5(6:7,:,:,:)*1000 ; total precipitation
+  fields_era5(8,:,:,:)    = fields_era5(8,:,:,:)/100. ; slp to hPa
 
   fields_era5_ym          = dim_avg_n_Wrap(fields_era5,1)
   fields_era5_ym_zm       = dim_avg_n_Wrap(fields_era5_ym,2)
@@ -50,19 +52,19 @@ calc_ppe          = 0
     end if             
     lats_edge(1:dimsizes(lat)-1)  = 2.*pi*(lat(0:dimsizes(lat)-2) + lat(1:dimsizes(lat)-1))/(2.0*360.)
     
-    do vv=0,1
+    do vv=0,dimsizes(vars_era5)-1
       dlat                          := sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
       dlat                           = where(ismissing(fields_era5_ym_zm(vv,:)),dlat@_FillValue,dlat)
+      if (vv .eq. 2 .or. vv .eq. 3) then
+        continue
+      end if
       ;--- global means 
         means_era5(vv)               = sum(fields_era5_ym_zm(vv,:)*dlat)/sum(dlat)
       ;--- meridional temperature gradient
         if (vars_era5(vv) .eq. "t2m" .or. vars_era5(vv) .eq. "sst") then
-          data_ym_zm_low  = where(abs(lat) .lt. 30., fields_era5_ym_zm(vv,:),fields_era5_ym_zm@_FillValue)
-          data_ym_zm_high = where(abs(lat) .gt. 60., fields_era5_ym_zm(vv,:),fields_era5_ym_zm@_FillValue)
-          dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
-          dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-
-          means_era5(vv+2)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
+          dlat_low        = where(abs(lat) .lt. 30., dlat,0)
+          dlat_high       = where(abs(lat) .gt. 60., dlat,0)
+          means_era5(vv+2)  =  wgt_areaave(fields_era5_ym(vv,:,:),dlat_low,1,0) - wgt_areaave(fields_era5_ym(vv,:,:),dlat_high,1,0) ; weighted MTG
         end if
     end do
 
@@ -72,24 +74,51 @@ calc_ppe          = 0
     do nn=0,dimsizes(models_deepmip)-1
       do ii=0,dimsizes(exps_deepmip)-1
         do vv=0,dimsizes(vars_deepmip)-1
-          ;--- check whether file for model+exp combination is available
-          f := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*"+vars_deepmip(vv)+"-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
-          if (.not. all(ismissing(f))) then ; file(s) found
-            if (ii .eq. 0) then
-              remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_piControl_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
+        
+          if (vars_deepmip(vv) .eq. "TOA_imbalance") then
+            if (models_deepmip(nn) .eq. "COSMOS-landveg_r2413" .or. models_deepmip(nn) .eq. "CESM1.2_CAM5") then ; wrong variables
+              continue
+            end if
+            f_rsdt := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*rsdt-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
+            f_rsut := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*rsut-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
+            f_rlut := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*rlut-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
+            if (.not. all(ismissing(f_rsdt))) then ; file(s) found
+              remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_"+exps_deepmip(ii)+"_TOA_imbalance_"+grid_ref_short+".nc"
+              if (fileexists(remap_file) .eq. False) then
+                calc_TOA_1  = systemfunc("cdo -r sub "+f_rsdt+" "+f_rsut+" "+plot_dir+"/../tmp/TOA.tmp1.nc")
+                calc_TOA_2  = systemfunc("cdo -r sub "+plot_dir+"/../tmp/TOA.tmp1.nc"+" "+f_rlut+" "+plot_dir+"/../tmp/TOA.tmp2.nc")
+                remap       = systemfunc("cdo -remapnn,"+grid_ref+" "+plot_dir+"/../tmp/TOA.tmp2.nc"+" "+remap_file)
+              end if
+              fi          = addfile(remap_file,"r")
+              data        = fi->rsdt   
             else
+              continue
+            end if
+          else
+          ;--- check whether file for model+exp combination is available
+            f := systemfunc("ls -r "+deepmip_dir+"/*/"+models_deepmip(nn)+"/*"+exps_deepmip(ii)+"*/"+versions_deepmip(nn)+"/*"+vars_deepmip(vv)+"-"+versions_deepmip(nn)+".mean.nc* 2> /dev/null")
+            if (.not. all(ismissing(f))) then ; file(s) found
               remap_file  = plot_dir+"/../tmp/"+models_deepmip(nn)+"_"+exps_deepmip(ii)+"_"+vars_deepmip(vv)+"_"+grid_ref_short+".nc"
+              if (fileexists(remap_file) .eq. False) then
+                remap       = systemfunc("cdo -remapnn,"+grid_ref+" "+f(0)+" "+remap_file)
+              end if
+              fi          = addfile(remap_file,"r")
+              data        = fi->$vars_deepmip(vv)$
+              if (models_deepmip(nn) .eq. "MIROC4m" .and. vars_deepmip(vv) .eq. "psl") then
+                data      = data*100.
+              end if
+            else
+              continue
             end if
-            if (fileexists(remap_file) .eq. False) then
-              remap       = systemfunc("cdo -remapnn,"+grid_ref+" "+f(0)+" "+remap_file)
-            end if
-            fi          = addfile(remap_file,"r")
-            data        = fi->$vars_deepmip(vv)$
-            
+          end if
+          
             if (vars_deepmip(vv) .eq. "tas") then
               data      = data-273.15
             else if (vars_deepmip(vv) .eq. "pr") then
               data      = data*86400
+            else if (vars_deepmip(vv) .eq. "psl") then
+              data      = data/100.
+            end if
             end if
             end if
             if (typeof(data) .eq. "double") then
@@ -116,20 +145,22 @@ calc_ppe          = 0
               dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
               dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
               ;--- global means 
-                means_deepmip(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
+                means_deepmip(nn,ii,vv)     = wgt_areaave(data_ym,dlat,1,0)
               ;--- meridional temperature gradient
                 if (vars_deepmip(vv) .eq. "tas" .or. vars_deepmip(vv) .eq. "tos") then
-                  data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
-                  data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
-                  dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
-                  dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-
-                  means_deepmip(nn,ii,vv+2)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
-
-                  delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])       
+                  dlat_low        = where(abs(lat) .lt. 30., dlat,0)
+                  dlat_high       = where(abs(lat) .gt. 60., dlat,0)
+                  ;means_deepmip(nn,ii,vv+2)     = sum(data_ym_zm*dlat_low)/sum(dlat_low) - sum(data_ym_zm*dlat_high)/sum(dlat_high) ; weighted MTG from zm
+                  means_deepmip(nn,ii,vv+2)     = wgt_areaave(data_ym,dlat_low,1,0) - wgt_areaave(data_ym,dlat_high,1,0) ; weighted MTG
+                  delete([/dlat_low,dlat_high/])       
                 end if
-               
-                if (vars_deepmip(vv) .eq. "tas" .or. vars_deepmip(vv) .eq. "tos" .or. vars_deepmip(vv) .eq. "pr" .or. vars_deepmip(vv) .eq. "uas") then
+                
+                if (vars_deepmip(vv) .eq. "pr" .and. vars_deepmip(vv+1) .eq. "pr") then
+                  delete([/data,data_ym_zm/])
+                  continue
+                end if
+             
+                if (vars_deepmip(vv) .eq. "tas" .or. vars_deepmip(vv) .eq. "tos" .or. vars_deepmip(vv) .eq. "pr" .or. vars_deepmip(vv) .eq. "uas" .or. vars_deepmip(vv) .eq. "psl") then
                   if (ii .eq. 0) then ; calculate RMSE only for PI
                   ;--- annual mean RMSE vs. ERA5
                     if (vars_deepmip(vv) .eq. "tas" .or. vars_deepmip(vv) .eq. "tos") then
@@ -150,7 +181,6 @@ calc_ppe          = 0
                   end if 
                 end if
             delete([/data,data_ym_zm/])         
-          end if
         end do
       end do
     end do
@@ -168,7 +198,6 @@ calc_ppe          = 0
     f             := addfile(plot_dir+"/../tmp/DeepMIP_processed_means."+grid_ref_short+".nc","r")
     means_deepmip  = f->means_deepmip
   end if
-  
 
 ;--- load HadCM3 PPE runs and calculate means
   if (calc_ppe .eq. 1) then
@@ -180,11 +209,25 @@ calc_ppe          = 0
           ;--- check whether file for model+exp combination is available
           f := systemfunc("ls -r "+ppe_dir+"/"+exps_ppe(ii)+models_ppe(nn)+"*"+varnames_ppe(vv)+"*.mean.zm.nc* 2> /dev/null")
           if (.not. all(ismissing(f))) then ; file(s) found
-            fi            = addfile(f,"r")
-            data_ym_zm    = fi->$vars_ppe(vv)$(0,0,:,0)
+            fi_zm         = addfile(f,"r")
+            data_ym_zm    = fi_zm->$vars_ppe(vv)$(0,0,:,0)
             data_ym_zm!0  = "lat"
             lat          := tofloat(data_ym_zm&lat)
-            
+
+            f        = systemfunc("ls -r "+ppe_dir+"/"+exps_ppe(ii)+models_ppe(nn)+"*"+varnames_ppe(vv)+"*.mean.nc* 2> /dev/null")
+            fi      := addfile(f,"r")
+            data     = fi->$vars_ppe_fields(vv)$(:,0,:,:)
+            data_ym  = dim_avg_n_Wrap(data,0)
+            if (vars_ppe_fields(vv) .eq. "temp_mm_1_5m") then
+              data_ym      = data_ym-273.15
+            else if (vars_ppe_fields(vv) .eq. "precip_mm_srf") then
+              data_ym      = data_ym*86400
+            else if (vars_ppe_fields(vv) .eq. "p_mm_msl") then
+              data_ym      = data_ym/100.
+            end if
+            end if
+            end if
+    
             ;--- calculate means (area weights from sine from latitude edges)
               pi                            = get_pi("float" )
               dlat                         := new(dimsizes(lat),"float") ; weights
@@ -201,43 +244,35 @@ calc_ppe          = 0
               dlat                          = sin(lats_edge(1:dimsizes(lat))) - sin(lats_edge(0:dimsizes(lat)-1))
               dlat                          = where(ismissing(data_ym_zm),dlat@_FillValue,dlat)
               ;--- global means 
-                means_ppe(nn,ii,vv)     = sum(data_ym_zm*dlat)/sum(dlat)
+                means_ppe(nn,ii,vv)     = wgt_areaave(data_ym,dlat,1,0)
+                  
                 if (vars_ppe(vv) .eq. "temp_mm_1_5m") ; calculate TOA imbalance
-                  SW_down     = fi->downSol_mm_TOA(0,0,:,0)
-                  SW_up       = fi->upSol_mm_s3_TOA(0,0,:,0)
-                  LW_up       = fi->olr_mm_s3_TOA(0,0,:,0)
+                  SW_down     = fi_zm->downSol_mm_TOA(0,0,:,0)
+                  SW_up       = fi_zm->upSol_mm_s3_TOA(0,0,:,0)
+                  LW_up       = fi_zm->olr_mm_s3_TOA(0,0,:,0)
                   TOA_balance = SW_down-SW_up-LW_up
-                  means_ppe(nn,ii,7)      = sum(TOA_balance*dlat)/sum(dlat)
+                  means_ppe(nn,ii,9)      = sum(TOA_balance*dlat)/sum(dlat)
+                end if
+
+                if (vars_ppe_fields(vv) .eq. "precip_mm_srf" .and. vars_ppe_fields(vv+1) .eq. "precip_mm_srf") then
+                  continue
                 end if
 
               ;--- SST gradient
                 if (vars_ppe(vv) .eq. "temp_ym_dpth" .or. vars_ppe(vv) .eq. "temp_mm_1_5m") then
-                  data_ym_zm_low  = where(abs(lat) .lt. 30., data_ym_zm,data_ym_zm@_FillValue)
-                  data_ym_zm_high = where(abs(lat) .gt. 60., data_ym_zm,data_ym_zm@_FillValue)
-                  dlat_low        = where(abs(lat) .lt. 30., dlat,dlat@_FillValue)
-                  dlat_high       = where(abs(lat) .gt. 60., dlat,dlat@_FillValue)
-                
-                  means_ppe(nn,ii,vv+2)     = sum(data_ym_zm_low*dlat_low)/sum(dlat_low) - sum(data_ym_zm_high*dlat_high)/sum(dlat_high) ; weighted MTG
-
-                  delete([/data_ym_zm_low,data_ym_zm_high,dlat_low,dlat_high/])      
+                  dlat_low        = where(abs(lat) .lt. 30., dlat,0)
+                  dlat_high       = where(abs(lat) .gt. 60., dlat,0)
+                  ;means_ppe(nn,ii,vv+2)     = sum(data_ym_zm*dlat_low)/sum(dlat_low) - sum(data_ym_zm*dlat_high)/sum(dlat_high) ; weighted MTG from zm
+                  means_ppe(nn,ii,vv+2)     =  wgt_areaave(data_ym,dlat_low,1,0) - wgt_areaave(data_ym,dlat_high,1,0); weighted MTG
+                  delete([/dlat_low,dlat_high/])      
                 end if
               ;--- annual mean RMSE vs. ERA5
-              if (vars_ppe_fields(vv) .eq. "temp_ym_dpth" .or. vars_ppe_fields(vv) .eq. "temp_mm_1_5m" .or. vars_ppe_fields(vv) .eq. "precip_mm_srf" .or. vars_ppe_fields(vv) .eq. "u_mm_10m") then
+              if (vars_ppe_fields(vv) .eq. "temp_ym_dpth" .or. vars_ppe_fields(vv) .eq. "temp_mm_1_5m" .or. vars_ppe_fields(vv) .eq. "precip_mm_srf" .or. vars_ppe_fields(vv) .eq. "u_mm_10m" .or. vars_ppe_fields(vv) .eq. "p_mm_msl") then
                   if (ii .eq. 0) then ; calculate RMSE only for PI
                     if (vars_ppe_fields(vv) .eq. "temp_mm_1_5m" .or. vars_ppe_fields(vv) .eq. "temp_ym_dpth") then
                       index = vv+4
                     else
                       index = vv
-                    end if
-                    f        = systemfunc("ls -r "+ppe_dir+"/"+exps_ppe(ii)+models_ppe(nn)+"*"+varnames_ppe(vv)+"*.mean.nc* 2> /dev/null")
-                    fi      := addfile(f,"r")
-                    data     = fi->$vars_ppe_fields(vv)$(:,0,:,:)
-                    data_ym  = dim_avg_n_Wrap(data,0)
-                    if (vars_ppe_fields(vv) .eq. "temp_mm_1_5m") then
-                      data_ym      = data_ym-273.15
-                    else if (vars_ppe_fields(vv) .eq. "precip_mm_srf") then
-                      data_ym      = data_ym*86400
-                    end if
                     end if
                 
                     lat_era   = fields_era5_ym&latitude
@@ -253,15 +288,13 @@ calc_ppe          = 0
                       exit
                     end if
                     end if
-                    delete(data)
                   end if
                 end if
-            delete([/data_ym_zm/])         
+            delete([/data_ym_zm,data,data_ym/])         
           end if
         end do
       end do
     end do
-    means_ppe(:,:,0)  = means_ppe(:,:,0) - 273.15
 
     ;---Open a new NetCDF file to write to
       fout_name = plot_dir+"/../tmp/PPE_processed_means.HadCM3BL.nc"
@@ -278,18 +311,19 @@ calc_ppe          = 0
   end if
 
 ;-- mask PPE means with TOA imbalance
-  means_ppe = where(conform_dims(dimsizes(means_ppe),abs(means_ppe(:,:,7)),(/0,1/)) .gt. 0.5,means_ppe@_FillValue,means_ppe)
+  means_ppe = where(conform_dims(dimsizes(means_ppe),abs(means_ppe(:,:,9)),(/0,1/)) .gt. 0.5,means_ppe@_FillValue,means_ppe)
 
 ;--- create mask for PI constraints
   means_ppe_mask  = means_ppe
   means_ppe_mask  = 0
 
-  min_deepmip_all   = dim_avg_n(means_deepmip(:,0,0:6),0)-2*dim_stddev_n(means_deepmip(:,0,0:6),0)
-  max_deepmip_all   = dim_avg_n(means_deepmip(:,0,0:6),0)+2*dim_stddev_n(means_deepmip(:,0,0),0)
+  min_deepmip_all   = dim_avg_n(means_deepmip(2:7,0,0:8),0)-2*dim_stddev_n(means_deepmip(2:7,0,0:8),0)
+  max_deepmip_all   = dim_avg_n(means_deepmip(2:7,0,0:8),0)+2*dim_stddev_n(means_deepmip(2:7,0,0:8),0)
+
   do nn=0,dimsizes(models_ppe)-1
     flag=1
-    do vv=0,6
-      if (vv .ne. 3) then
+    do vv=0,8
+      if (vv .ne. 8) then
         if (means_ppe(nn,0,vv) .lt. min_deepmip_all(vv) .or. means_ppe(nn,0,vv) .gt. max_deepmip_all(vv)) then
           flag=0
         end if
@@ -298,6 +332,7 @@ calc_ppe          = 0
     means_ppe_mask(nn,:,:) = flag
   end do
 
+print(models_ppe+": "+means_ppe_mask(:,0,0))
 ;--- scatter plots
   wks = gsn_open_wks("pdf",plot_dir+"/gm_mtg_scatter_ppe")
 
@@ -325,8 +360,8 @@ calc_ppe          = 0
   ploutres@gsMarkerThicknessF = 1.
   ploutres@gsMarkerIndex      = 4
 
-  pl_colors             = (/"gray","black","purple","blue","cyan","green","orange"/)
-  pl_styles_deepmip     = (/4,16,5,6,9,7/)
+  pl_colors             = (/"gray","black","black","purple","blue","cyan","green","orange"/)
+  pl_styles_deepmip     = (/4,16,5,6,9,7,8,3/)
   pl_styles_ppe_f       = (/12/)
   pl_styles_ppe         = (/16/)
 
@@ -343,7 +378,7 @@ calc_ppe          = 0
 
   count         = 0
   
-  co2_levels    = (/1,1,2,3,4,6,9/)
+  co2_levels    = (/1,1,1.5,2,3,4,6,9/)
   
     ;--- TEMP2 vs. CO2
     res_blank@trXMinF         = log10(0.7)
@@ -408,6 +443,11 @@ calc_ppe          = 0
           poly2(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)+0.05*co2_levels(ll)),means_ppe(nn,ll,0),plres)
         end if
         if (models_ppe(nn) .ne. "f") then
+          if (means_ppe_mask(nn,ll,0) .eq. 1) then
+            ploutres@gsMarkerColor  = "black"
+          else
+            ploutres@gsMarkerColor  = pl_colors(ll)
+          end if
           poly2_out(count) = gsn_add_polymarker(wks,plot(2),log10(co2_levels(ll)+0.05*co2_levels(ll)),means_ppe(nn,ll,0),ploutres)
         end if
         count       = count+1
@@ -419,8 +459,8 @@ calc_ppe          = 0
     ;--- SST vs. SST MTG
     res_blank@trXMinF         = 15
     res_blank@trXMaxF         = 40
-    res_blank@trYMinF         = 17
-    res_blank@trYMaxF         = 28
+    res_blank@trYMinF         = 16
+    res_blank@trYMaxF        := 28.5
     res_blank@tmXBValues     := ispan(15,40,5)
     res_blank@tmXBLabels     := (/"15","20","25","30","35","40"/)
     res_blank@tmXBMinorValues:= ispan(15,40,1)
@@ -476,6 +516,11 @@ calc_ppe          = 0
           poly2(count) = gsn_add_polymarker(wks,plot(3),means_ppe(nn,ll,1),means_ppe(nn,ll,3),plres)
         end if
         if (models_ppe(nn) .ne. "f") then
+          if (means_ppe_mask(nn,ll,0) .eq. 1) then
+            ploutres@gsMarkerColor  = "black"
+          else
+            ploutres@gsMarkerColor  = pl_colors(ll)
+          end if
           poly2_out(count) = gsn_add_polymarker(wks,plot(3),means_ppe(nn,ll,1),means_ppe(nn,ll,3),ploutres)
         end if
         count       = count+1
@@ -488,8 +533,8 @@ calc_ppe          = 0
    pl_styles_legend = array_append_record(pl_styles_deepmip,pl_styles_ppe_f,0)
    
    legend = create "Legend" legendClass wks 
-   "vpXF" : 0.291
-   "vpYF" : .69
+   "vpXF" : 0.305
+   "vpYF" : .665
    "lgAutoManage" : False
    "vpWidthF" : 0.08
    "vpHeightF" : 0.12
@@ -503,32 +548,100 @@ calc_ppe          = 0
    "lgItemType" : "Markers"
    "lgLabelsOn" : True 
    "lgLineLabelsOn" : False 
-   "lgLabelFontHeightF"  : 0.007
+   "lgLabelFontHeightF"  : 0.006
    "lgLabelPosition" : "Right"
    "lgLabelOffsetF" : 0.1
    "lgMonoDashIndex" : False
    "lgMarkerIndexes" : pl_styles_legend
    "lgMonoMarkerColor" : True ; Only one dash pattern - solid
    "lgMarkerColor" : "black"
-   "lgMarkerSizeF" : 0.01
+   "lgMarkerSizeF" : 0.008
    "lgMarkerThicknessF" : 2
    end create 
 
    draw(legend)
 
+   names_legend2 = (/"TOA < 0.5","TOA < 0.5 + 'good' PI"/)
+   pl_styles_legend2 = (/4,pl_styles_ppe/)
+   
+   legend2 = create "Legend" legendClass wks 
+   "vpXF" : 0.845
+   "vpYF" : .445
+   "lgAutoManage" : False
+   "vpWidthF" : 0.04
+   "vpHeightF" : 0.04
+   "lgLineThicknessF" : 8.0
+   "lgLineDashSegLenF" : 0.08
+   "lgPerimOn" : True
+   "lgLabelJust" : "CenterLeft"
+   "lgItemCount" : dimsizes(names_legend2)
+   "lgItemOrder" : ispan(dimsizes(names_legend2)-1,0,1)
+   "lgLabelStrings" : names_legend2
+   "lgItemType" : "Markers"
+   "lgLabelsOn" : True 
+   "lgLineLabelsOn" : False 
+   "lgLabelFontHeightF"  : 0.007
+   "lgLabelPosition" : "Right"
+   "lgLabelOffsetF" : 0.1
+   "lgMonoDashIndex" : False
+   "lgMarkerIndexes" : pl_styles_legend2
+   "lgMonoMarkerColor" : True ; Only one dash pattern - solid
+   "lgMarkerColor" : "black"
+   "lgMarkerSizeF" : 0.008
+   "lgMarkerThicknessF" : 1
+   end create 
+
+   draw(legend2)
+
+   names_legend3 = (/"piControl","DeepMIP 1x/1.5x","DeepMIP 2x","DeepMIP 3x","DeepMIP 4x","DeepMIP 6x","DeepMIP 9x"/)
+   pl_styles_legend3 = (/pl_styles_ppe,pl_styles_ppe,pl_styles_ppe,pl_styles_ppe,pl_styles_ppe,pl_styles_ppe,pl_styles_ppe/)
+   
+   legend3 = create "Legend" legendClass wks 
+   "vpXF" : 0.08
+   "vpYF" : .795
+   "lgAutoManage" : False
+   "vpWidthF" : 0.03
+   "vpHeightF" : 0.1
+   "lgLineThicknessF" : 8.0
+   "lgLineDashSegLenF" : 0.08
+   "lgPerimOn" : False
+   "lgLabelJust" : "CenterLeft"
+   "lgItemCount" : dimsizes(names_legend3)
+   "lgItemOrder" : ispan(dimsizes(names_legend3)-1,0,1)
+   "lgLabelStrings" : names_legend3
+   "lgItemType" : "Markers"
+   "lgLabelsOn" : True 
+   "lgLineLabelsOn" : False 
+   "lgLabelFontHeightF"  : 0.007
+   "lgLabelPosition" : "Right"
+   "lgLabelOffsetF" : 0.1
+   "lgMonoDashIndex" : False
+   "lgMarkerIndexes" : pl_styles_legend3
+   "lgMonoMarkerColor" : False ; Only one dash pattern - solid
+   "lgMarkerColors" : pl_colors((/0,1,3,4,5,6,7/))
+   "lgMarkerSizeF" : 0.008
+   "lgMarkerThicknessF" : 1
+   end create 
+
+   draw(legend3)
+
+  resP@txString               = "HadCM3B PPE piControl+DeepMIP simulations vs. DeepMIP database vs. EECO proxies (red square) " 
+  resP@txFontHeightF          = 0.015
   gsn_panel(wks,plot,(/2,2/),resP)
 
 
   wks = gsn_open_wks("pdf",plot_dir+"/PI_metric_comparison")
 
-  vars_comparison = (/0,1,2,3,4,5,6,7/)
-  vars_titles     = (/"global mean T2m","global mean SST","meridional T2m gradient","meridional SST gradient","RMSE T2m","RMSE SST","RMSE Precip","TOA imbalance"/)
-  ymins           = (/10,15,34,22,0,0,0,-0.4/)
-  ymaxs           = (/18,21,47,29,4,4,3, 0.4/)
+  idx_list        = (/0,1,2,3,4,5,6,7,8,9/)
+  vars_titles     = (/"global mean T2m","global mean SST","meridional gradient T2m","polar amplification","RMSE T2m","RMSE SST","global mean Precip","RMSE Precip","RMSE sea-level pressure","TOA imbalance"/)
+  ymins           = (/10,15,  34,23.5,0,0,2.5,0.0 ,0,-.6/)
+  ymaxs           = (/18,21.5,47,30,4,4,3.4,2.55,8, 1.2/)
 
-  plot                  := new(dimsizes(vars_comparison),graphic)
-  deepmip_poly          := new(dimsizes(vars_comparison),graphic)
-  era5_poly             := new(dimsizes(vars_comparison),graphic)
+  plot                  := new(dimsizes(idx_list),graphic)
+  deepmip_poly          := new(dimsizes(idx_list),graphic)
+  era5_poly             := new(dimsizes(idx_list),graphic)
+  deepmip_lines         := new(dimsizes(idx_list)*dimsizes(models_deepmip),graphic)
+  deepmip_anno          := new(dimsizes(idx_list)*dimsizes(models_deepmip),graphic)
 
   res_bar                 = True
   res_bar@gsnXYBarChart   = True            ; Create bar plot
@@ -544,28 +657,28 @@ calc_ppe          = 0
   res_bar@gsnYRefLine     = 0
   colors_bar              = models_ppe
   res_bar@xyCurveDrawOrder  = "PostDraw"
+  res_bar@tmXTOn            = False
+  res_bar@tmYRLabelsOn    = True  
+  res_bar@tmYUseLeft = False
+  res_bar@tmYRMode        = "Explicit"  
 
   gres                 = True
   gres@gsFillColor     = "black"
   gres@gsFillOpacityF  = 0.15
   gres@tfPolyDrawOrder = "Draw"  ; this can be used for polylines, polymarkers, or polygons
 
+  txres                = True
+  txres@txFontHeightF  = 0.01
+  
   pline_res                   = True
-  pline_res@gsLineColor       = "black"
-  pline_res@gsLineThicknessF  = 3
 
-  do nn=0,dimsizes(vars_comparison)-1
+  do nn=0,dimsizes(idx_list)-1
     res_bar@trYMinF       := ymins(nn)
     res_bar@trYMaxF       := ymaxs(nn)
-    if (nn .eq. 7) then
-      min_deepmip = -1
-      max_deepmip = 1
-    else
-      min_deepmip            = avg(means_deepmip(:,0,nn))-2*stddev(means_deepmip(:,0,nn))
-      max_deepmip            = avg(means_deepmip(:,0,nn))+2*stddev(means_deepmip(:,0,nn))
-    end if
+    min_deepmip            = avg(means_deepmip(2:7,0,idx_list(nn)))-2*stddev(means_deepmip(2:7,0,idx_list(nn)))
+    max_deepmip            = avg(means_deepmip(2:7,0,idx_list(nn)))+2*stddev(means_deepmip(2:7,0,idx_list(nn)))
     do ii=0,22
-      if (means_ppe(ii,0,nn) .lt. min_deepmip .or. means_ppe(ii,0,nn) .gt. max_deepmip) then
+      if (means_ppe(ii,0,idx_list(nn)) .lt. min_deepmip .or. means_ppe(ii,0,idx_list(nn)) .gt. max_deepmip) then
         colors_bar(ii)  = "beige"
       else
         if (models_ppe(ii) .eq. "a") then
@@ -578,23 +691,40 @@ calc_ppe          = 0
         end if
       end if
     end do
-    
-    if (nn .eq. 7) then
-      colors_bar  := models_ppe
-      colors_bar  = "burlywood1"
+    if (vars_titles(nn) .eq. "TOA imbalance") then
+      delete(res_bar@gsnXYBarChartColors)
+      res_bar@gsnXYBarChartColors2 = colors_bar
+    else
+      res_bar@gsnXYBarChartColors = colors_bar
     end if
     
-    res_bar@gsnXYBarChartColors = colors_bar
-    plot(nn)               = gsn_csm_xy(wks,ispan(1,23,1),means_ppe(:,0,nn),res_bar)
-    if (nn .le. 6) then
-      deepmip_poly(nn)       = gsn_add_polygon(wks,plot(nn),(/-10,30,30,-10,-10/),(/min_deepmip,min_deepmip,max_deepmip,max_deepmip,min_deepmip/),gres)
-    end if
-    if (nn .le. 3) then
-      era5_poly(nn)          = gsn_add_polyline(wks,plot(nn),(/-10,30/),(/means_era5(nn),means_era5(nn)/),pline_res)
+    res_bar@tmYRValues = means_deepmip(:,0,idx_list(nn))
+    res_bar@tmYRLabels = deepmip_short
+    res_bar@tmYRLabelFontHeightF = 0.01
+
+    plot(nn)               = gsn_csm_xy(wks,ispan(1,23,1),means_ppe(:,0,idx_list(nn)),res_bar)
+    deepmip_poly(nn)       = gsn_add_polygon(wks,plot(nn),(/-10,30,30,-10,-10/),(/min_deepmip,min_deepmip,max_deepmip,max_deepmip,min_deepmip/),gres)
+    
+    pline_res@gsLineThicknessF  = 1
+    pline_res@gsLineColor  = "gray30"
+    do dd=0,dimsizes(models_deepmip)-1
+      if (.not. ismissing(means_deepmip(dd,0,idx_list(nn)))) then
+        deepmip_lines(nn*dimsizes(models_deepmip)+dd)  = gsn_add_polyline(wks,plot(nn),(/-10,30/),(/means_deepmip(dd,0,idx_list(nn)),means_deepmip(dd,0,idx_list(nn))/),pline_res)
+      end if
+    end do
+    if (nn .le. 3 .or. nn .eq. 6) then
+      pline_res@gsLineThicknessF  = 3
+      pline_res@gsLineColor       = "black"
+      era5_poly(nn)          = gsn_add_polyline(wks,plot(nn),(/-10,30/),(/means_era5(idx_list(nn)),means_era5(idx_list(nn))/),pline_res)
     end if
   end do
   
   resP@amJust                 = "TopLeft"
   resP@gsnPanelFigureStrings  = vars_titles
   resP@gsnPanelFigureStringsFontHeightF = 0.01
-  gsn_panel(wks,plot,(/4,2/),resP)
+  resP@gsnPanelXWhiteSpacePercent = 0
+  resP@gsnPanelYWhiteSpacePercent = 0
+  resP@txString               = "HadCM3B PPE piControl performance vs. DeepMIP database~C~shading: DeepMIP mean +/- 2 sigma; black line and RMSE ref: ERA5 1980-1999 mean " 
+  resP@txFontHeightF          = 0.015
+  
+  gsn_panel(wks,plot,(/3,4/),resP)
